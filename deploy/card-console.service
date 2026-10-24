@@ -1,0 +1,29 @@
+[Unit]
+Description=Multi-user card management and fulfillment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=card-console
+Group=card-console
+WorkingDirectory=/opt/card-console/current
+EnvironmentFile=/etc/card-console.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/card-console/venv/bin/python /opt/card-console/current/admin.py --port 8765
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/card-console
+
+[Install]
+WantedBy=multi-user.target

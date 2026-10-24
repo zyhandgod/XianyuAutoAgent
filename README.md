@@ -1,3 +1,13 @@
+# 本地管理后台
+
+本地新增的 `cards.py` / `start-local.command` 用于“付款后，按购买数量发送未使用卡密”，不需要 AI API Key。
+聊天模拟使用 `start-mock.command`：买家发“已支付”，仅回复不可使用的 MOCK 测试卡密，不查询付款或使用正式库存。
+先双击 `demo-local.command` 体验离线模拟；接入真实账号前请按 [卡密发货说明](docs/card-delivery.md) 配置 Cookie、按商品导入卡密并完成演练；真实订单的购买数量来自卖家订单接口，整单卡密会合并成一条消息发送。
+双击 `start-admin.command`，打开 http://127.0.0.1:8765 ，可管理商品、库存、记录和服务启停。发货服务默认停止。
+支持账号密码登录：首次设置管理员，再由管理员创建成员。不同用户的 Cookie、商品、卡密、记录、日志和发货进程分别隔离，现有数据仅迁移给首个管理员。
+真实模式核实买家付款后发卡，再确认无需物流发货并回查状态。消息和订单查询已验证，正式发卡及平台发货仍待真实库存与新付款订单联调。
+下面保留原项目的 AI 模式说明，卡密模式不使用其模型配置。
+
 # 🚀 Xianyu AutoAgent - 智能闲鱼客服机器人系统
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/) [![LLM Powered](https://img.shields.io/badge/LLM-powered-FF6F61)](https://platform.openai.com/)
