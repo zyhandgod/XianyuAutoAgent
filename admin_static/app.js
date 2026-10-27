@@ -101,7 +101,7 @@ async function beginServerBrowser(){
 }
 function browserFrame(result){
  if(result.image&&$('#browser-screen')){$('#browser-screen').src=result.image;$('#browser-screen').hidden=false;}
- if($('#browser-status'))$('#browser-status').textContent=result.error||result.message||(result.status==='preparing'?'正在启动浏览器，请稍候…':'请在画面中完成闲鱼验证或登录，再保存并检测。');
+ if($('#browser-status'))$('#browser-status').textContent=result.error||result.message||serverBrowser?.note||(result.status==='preparing'?'正在启动浏览器，请稍候…':'请在画面中完成闲鱼验证或登录，再保存并检测。');
 }
 async function browserCommand(action,data={}){
  const flow=serverBrowser;if(!flow||flow.busy||flow.points||flow.epoch!==authEpoch)return;
@@ -109,6 +109,8 @@ async function browserCommand(action,data={}){
  try{
   const result=await request('/api/browser-'+action,{id:flow.id,...data});
   if(serverBrowser!==flow||flow.epoch!==authEpoch)return;
+  if(action==='save')flow.note=result.message+(result.codes?.length?'（'+result.codes.join(' / ')+'）':'');
+  if(action==='input')flow.note='';
   browserFrame(result);
   if(action==='save'&&result.status==='ok')toast('登录检测通过，可关闭验证窗口并启动发货服务');
  }catch(err){if(serverBrowser===flow&&$('#browser-status'))$('#browser-status').textContent=err.message;}
