@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -213,6 +214,7 @@ class MultiAdmin:
                 raise ValueError('ADMIN_PUBLIC_URL 必须是完整的 HTTPS 来源地址，不含路径')
         self.managers={}
         self.qr_logins={}
+        self.server_browsers={}
         self.lock=threading.RLock()
 
     def manager(self,user):
@@ -250,7 +252,41 @@ class MultiAdmin:
     def action(self,user,action,data):
         manager=self.manager(user)
         with self.lock:
+            if action.startswith('browser-'):
+                from server_browser import ServerBrowser, browser_input
+                current=self.server_browsers.get(user['id'])
+                if action=='browser-start':
+                    if manager.running():raise ValueError('请先停止发货服务，再打开服务器验证')
+                    for uid,session in list(self.server_browsers.items()):
+                        if session.closed or not session.process.is_alive() or time.monotonic()-session.created>600:
+                            session.close();del self.server_browsers[uid]
+                    current=self.server_browsers.get(user['id'])
+                    if not current:
+                        if self.server_browsers:raise ValueError('另一个账号正在验证，请稍后重试')
+                        if user['id'] in self.qr_logins:self.qr_logins[user['id']].cancel()
+                        current=ServerBrowser(manager.config().get('COOKIES_STR') or '')
+                        self.server_browsers[user['id']]=current
+                    return {'id':current.id,'status':'preparing'}
+                if not current or data.get('id')!=current.id:raise ValueError('验证窗口已失效，请重新打开')
+                if action=='browser-close':
+                    current.close();self.server_browsers.pop(user['id'],None)
+                    return {'status':'closed'}
+                if action=='browser-status':return current.exchange()
+                if action=='browser-input':return current.exchange(**browser_input(data))
+                if action=='browser-save':
+                    if manager.running():raise ValueError('请先停止发货服务再保存登录信息')
+                    private=current.exchange('cookies')
+                    value=private.get('cookie','')
+                    seller=trans_cookies(value).get('unb','')
+                    if not seller.isdigit() or not trans_cookies(value).get('_m_h5_tk'):
+                        raise ValueError('尚未取得完整闲鱼登录信息，请在验证窗口登录闲鱼后再保存')
+                    self.auth.bind(user['id'],seller,lambda:manager.action('cookie',{'cookie':value}))
+                    from login_check import check_login
+                    result=check_login(value,manager.store)
+                    return {**result,'saved':True,'message':'服务器浏览器登录信息已保存。'+result['message']}
+                raise ValueError('未知浏览器操作')
             if action.startswith('qr-login-'):
+                if action=='qr-login-start':self.close_browser(user['id'])
                 current=self.qr_logins.get(user['id'])
                 if action=='qr-login-start':
                     if manager.running():raise ValueError('请先停止发货服务，再扫码登录')
@@ -283,14 +319,20 @@ class MultiAdmin:
                     return snapshot
                 raise ValueError('未知扫码操作')
             if action=='cookie':
+                self.close_browser(user['id'])
                 if user['id'] in self.qr_logins:self.qr_logins[user['id']].cancel()
                 seller=trans_cookies(data.get('cookie','')).get('unb','')
                 if not seller.isdigit():raise ValueError('Cookie 中缺少有效账号标识')
                 return self.auth.bind(user['id'],seller,lambda:manager.action(action,data))
             if action=='start':
+                self.close_browser(user['id'])
                 if user['id'] in self.qr_logins:self.qr_logins[user['id']].cancel()
                 return self.auth.bind(user['id'],manager.seller(),lambda:manager.action(action,data))
             return manager.action(action,data)
+
+    def close_browser(self,user_id):
+        session=self.server_browsers.pop(user_id,None)
+        if session:session.close()
 
     def set_active(self,actor,target,active):
         users=self.auth.users(actor['id'])
@@ -299,12 +341,15 @@ class MultiAdmin:
         if user['id']==actor['id']:raise ValueError('不能停用当前管理员账号')
         with self.lock:
             if not active:
+                self.close_browser(target)
                 self.manager(user).stop()
                 if target in self.qr_logins:self.qr_logins[target].cancel()
             self.auth.set_active(actor['id'],target,active)
 
     def stop(self,owned_only=True):
         with self.lock:
+            for session in list(self.server_browsers.values()):session.close()
+            self.server_browsers.clear()
             for login in self.qr_logins.values():login.cancel()
             for manager in self.managers.values():manager.stop(owned_only=owned_only)
 
@@ -437,11 +482,13 @@ def handler_for(app):
                 if not secrets.compare_digest(self.headers.get('X-CSRF-Token',''),user['csrf']):
                     return self.send(403,{'error':'登录状态已变化，请刷新页面'})
                 if self.path=='/api/auth/logout':
+                    app.close_browser(user['id'])
                     if user['id'] in app.qr_logins:app.qr_logins[user['id']].cancel()
                     app.auth.logout(self.session_token())
                     return self.send(200,{'message':'已退出登录'},cookie=self.session_cookie())
                 if self.path=='/api/auth/password':
                     app.auth.change_password(user['id'],data.get('old',''),data.get('password'))
+                    app.close_browser(user['id'])
                     if user['id'] in app.qr_logins:app.qr_logins[user['id']].cancel()
                     return self.send(200,{'message':'密码已修改，请重新登录'},cookie=self.session_cookie())
                 if self.path=='/api/auth/create-user':
