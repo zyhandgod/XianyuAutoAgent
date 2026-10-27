@@ -6,6 +6,7 @@ Full suite, from repository root:
 PYTHONPATH=tests .venv/bin/python -m unittest discover -s tests -v
 node --check admin_static/app.js
 node --check admin_static/auth.js
+node tests/test_browser_input_queue.js
 git diff --check
 ```
 

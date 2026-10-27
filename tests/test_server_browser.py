@@ -7,6 +7,13 @@ from server_browser import browser_input
 
 
 class BrowserInputTests(unittest.TestCase):
+    def test_live_pointer_events_are_bounded_and_ordered(self):
+        events=[{'type':'down','x':1,'y':2},{'type':'move','x':20,'y':2},{'type':'up','x':30,'y':2}]
+        self.assertEqual(browser_input({'kind':'pointer-events','events':events})['events'],events)
+        for events in [[],[{'type':'click','x':1,'y':1}],[{'type':'move','x':True,'y':1}],
+                       [{'type':'down','x':1100,'y':1}],[{'type':'down','x':1,'y':-1}]]:
+            with self.assertRaises(ValueError):browser_input({'kind':'pointer-events','events':events})
+
     def test_manual_input_bounds(self):
         self.assertEqual(browser_input({'kind':'pointer','points':[[0,0],[1099,779]]})['points'],[[0,0],[1099,779]])
         for data in [{'kind':'pointer','points':[]},{'kind':'pointer','points':[[1100,1]]},

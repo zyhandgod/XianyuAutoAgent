@@ -88,15 +88,15 @@ async function beginServerBrowser(){
  const epoch=authEpoch;
  const result=await request('/api/browser-start',{});
  if(epoch!==authEpoch)return;
- serverBrowser={id:result.id,epoch,busy:false,timer:null,points:null};
+ serverBrowser={id:result.id,epoch,busy:false,timer:null,dragging:false,queue:[]};
  dialog('服务器浏览器 · 闲鱼人工验证',`<p class="hint">下面是服务器上的浏览器。可直接点击、拖动滑块；登录时优先使用扫码。有效期10分钟。完成后点击“保存登录并检测”。本窗口不会自动启动发货。</p><p id="browser-status" role="status">正在启动浏览器，请稍候…</p><img id="browser-screen" alt="服务器浏览器画面" draggable="false" hidden><div class="browser-controls"><input id="browser-text" type="password" autocomplete="off" maxlength="128" placeholder="如需输入，先点击画面中的输入框，再在此填写"><button type="button" class="secondary" data-browser="text">输入到画面</button><button type="button" class="secondary" data-browser="key" data-key="Control+A">全选</button><button type="button" class="secondary" data-browser="key" data-key="Backspace">退格</button><button type="button" class="secondary" data-browser="key" data-key="Enter">回车</button><button type="button" class="secondary" data-browser="wheel" data-delta="-500">向上滚动</button><button type="button" class="secondary" data-browser="wheel" data-delta="500">向下滚动</button><button type="button" class="secondary" data-browser="home">回到闲鱼</button><button type="button" class="secondary" data-browser="refresh">刷新页面</button><button type="button" class="primary" data-browser="save">保存登录并检测</button></div>`,null);
  $('#dialog').classList.add('browser-dialog');
  const screen=$('#browser-screen');
  const point=event=>{const r=screen.getBoundingClientRect();return [Math.max(0,Math.min(1099,Math.round((event.clientX-r.left)*1100/r.width))),Math.max(0,Math.min(779,Math.round((event.clientY-r.top)*780/r.height)))];};
- screen.onpointerdown=event=>{const f=serverBrowser;if(!f||f.busy)return;event.preventDefault();f.points=[point(event)];screen.setPointerCapture(event.pointerId);};
- screen.onpointermove=event=>{const f=serverBrowser;if(f?.points&&f.points.length<119)f.points.push(point(event));};
- screen.onpointerup=event=>{const f=serverBrowser;if(!f?.points)return;f.points.push(point(event));const points=f.points;f.points=null;void browserCommand('input',{kind:'pointer',points});};
- screen.onpointercancel=()=>{if(serverBrowser)serverBrowser.points=null;};
+ screen.onpointerdown=event=>{const f=serverBrowser;if(!f||event.button!==0)return;event.preventDefault();f.dragging=true;screen.setPointerCapture(event.pointerId);const [x,y]=point(event);void browserCommand('input',{kind:'pointer-events',events:[{type:'down',x,y}]});};
+ screen.onpointermove=event=>{if(!serverBrowser?.dragging)return;const [x,y]=point(event);void browserCommand('input',{kind:'pointer-events',events:[{type:'move',x,y}]});};
+ const release=event=>{const f=serverBrowser;if(!f?.dragging)return;f.dragging=false;const [x,y]=point(event);void browserCommand('input',{kind:'pointer-events',events:[{type:'up',x,y}]});};
+ screen.onpointerup=release;screen.onpointercancel=release;screen.onlostpointercapture=release;
  await browserCommand('status');
 }
 function browserFrame(result){
@@ -104,7 +104,16 @@ function browserFrame(result){
  if($('#browser-status'))$('#browser-status').textContent=result.error||result.message||serverBrowser?.note||(result.status==='preparing'?'正在启动浏览器，请稍候…':'请在画面中完成闲鱼验证或登录，再保存并检测。');
 }
 async function browserCommand(action,data={}){
- const flow=serverBrowser;if(!flow||flow.busy||flow.points||flow.epoch!==authEpoch)return;
+ const flow=serverBrowser;if(!flow||flow.epoch!==authEpoch)return;
+ if(flow.busy){
+  if(action!=='status'){
+   const last=flow.queue[flow.queue.length-1];
+   if(data.kind==='pointer-events'&&last?.data.kind==='pointer-events'&&last.data.events.length<120){
+    for(const event of data.events){const previous=last.data.events[last.data.events.length-1];if(event.type==='move'&&previous?.type==='move')last.data.events[last.data.events.length-1]=event;else last.data.events.push(event);}
+   }else flow.queue.push({action,data});
+  }
+  return;
+ }
  if(flow.timer)clearTimeout(flow.timer);flow.busy=true;
  try{
   const result=await request('/api/browser-'+action,{id:flow.id,...data});
@@ -114,7 +123,10 @@ async function browserCommand(action,data={}){
   browserFrame(result);
   if(action==='save'&&result.status==='ok')toast('登录检测通过，可关闭验证窗口并启动发货服务');
  }catch(err){if(serverBrowser===flow&&$('#browser-status'))$('#browser-status').textContent=err.message;}
- finally{flow.busy=false;if(serverBrowser===flow&&$('#dialog').open)flow.timer=setTimeout(()=>browserCommand('status'),2000);}
+ finally{
+  flow.busy=false;
+  if(serverBrowser===flow&&$('#dialog').open){const next=flow.queue.shift();if(next)void browserCommand(next.action,next.data);else flow.timer=setTimeout(()=>browserCommand('status'),flow.dragging?150:600);}
+ }
 }
 document.addEventListener('click',async event=>{
  const button=event.target.closest('button');if(!button||button.disabled)return;

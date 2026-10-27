@@ -12,6 +12,7 @@ WIDTH, HEIGHT = 1100, 780
 def _worker(pipe, cookie):
     # Separate process: Playwright's sync API must stay on its owning thread.
     os.setsid()
+    os.environ['PW_TEST_SCREENSHOT_NO_FONTS_READY']='1'
     browser = display = None
     try:
         import select
@@ -77,6 +78,11 @@ def _worker(pipe, cookie):
                                 page.mouse.move(*point)
                                 page.wait_for_timeout(18)
                         finally:page.mouse.up()
+                    elif kind=='pointer-events':
+                        for event in command['events']:
+                            page.mouse.move(event['x'],event['y'])
+                            if event['type']=='down':page.mouse.down()
+                            elif event['type']=='up':page.mouse.up()
                     elif kind=='wheel':page.mouse.wheel(0,command['delta'])
                     elif kind=='key':page.keyboard.press(command['key'])
                     elif kind=='text':page.keyboard.insert_text(command['text'])
@@ -90,7 +96,7 @@ def _worker(pipe, cookie):
                     # Popups (e.g. official Taobao login) become the displayed page.
                     pages=[p for p in context.pages if not p.is_closed()]
                     if pages:page=pages[-1]
-                    image=base64.b64encode(page.screenshot(type='jpeg',quality=65,timeout=8000)).decode()
+                    image=base64.b64encode(page.screenshot(type='jpeg',quality=45,timeout=3000)).decode()
                     pipe.send({'status':'ready','image':'data:image/jpeg;base64,'+image,'width':WIDTH,'height':HEIGHT})
                 except Exception:
                     pipe.send({'status':'ready','error':'页面操作未完成，请刷新画面后重试'})
@@ -160,6 +166,14 @@ class ServerBrowser:
 
 def browser_input(data):
     kind=data.get('kind')
+    if kind=='pointer-events':
+        events=data.get('events')
+        if not isinstance(events,list) or not 1<=len(events)<=120:raise ValueError('无效鼠标事件')
+        for event in events:
+            if (not isinstance(event,dict) or event.get('type') not in {'down','move','up'}
+                    or type(event.get('x')) is not int or type(event.get('y')) is not int
+                    or not 0<=event['x']<WIDTH or not 0<=event['y']<HEIGHT):raise ValueError('无效鼠标事件')
+        return {'kind':kind,'events':[{'type':e['type'],'x':e['x'],'y':e['y']} for e in events]}
     if kind=='pointer':
         points=data.get('points')
         if not isinstance(points,list) or not 1<=len(points)<=120:raise ValueError('无效鼠标操作')
