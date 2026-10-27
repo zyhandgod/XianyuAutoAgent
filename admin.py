@@ -150,6 +150,9 @@ class Admin:
 
     def action(self, action, data):
         with self.lock:
+            if action=='check-login':
+                from login_check import check_login
+                return check_login(self.config().get('COOKIES_STR') or '',self.store)
             if action=='delivery-template':
                 save_template(self.workspace/'data/delivery-template.json',data.get('template'))
                 return {'message':'发货文案已保存，下一次发卡使用新文案，无需重启服务'}

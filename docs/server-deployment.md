@@ -116,3 +116,5 @@ webroot challenge, then validate `nginx -t` before reloading. Renewal must retai
 Keep a pre-change Nginx configuration backup and a persistent-data backup. Rollback changes the `current`
 symlink only to a compatible release as required by the boundary above, and restarts this service. Never
 replace current business data with stale data during rollback.
+
+Login diagnostics: 运行设置 → 检测登录状态 performs a bounded login-token request without sending messages. Verification errors show only fixed error codes and an HTTPS verification link restricted to official Goofish/Taobao/Alibaba domains, visible only to the signed-in workspace via a CSRF-protected action. Links are not logged or persisted. Complete verification personally, then check again; browser verification may not clear server-IP restrictions.

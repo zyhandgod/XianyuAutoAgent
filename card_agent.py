@@ -119,7 +119,8 @@ class CardAgent:
         merge_response_cookies(self.api.session, result)
         body = result.json()
         if not isinstance(body, dict) or not any(str(r).startswith("SUCCESS::") for r in body.get("ret", [])):
-            raise RuntimeError("登录失败；请在浏览器完成平台验证，再更新本地 Cookie")
+            from login_check import LoginRejected
+            raise LoginRejected(body)
         access_token = body.get("data", {}).get("accessToken")
         if not access_token:
             raise RuntimeError("Token 接口格式不匹配，未启动发卡")
